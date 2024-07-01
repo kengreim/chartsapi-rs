@@ -27,7 +27,7 @@ struct ChartsHashMaps {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
@@ -40,9 +40,7 @@ async fn main() {
         );
         "2406".to_string()
     }));
-    let hashmaps = Arc::new(RwLock::new(
-        load_charts(&current_cycle.read().await).await.unwrap(),
-    ));
+    let hashmaps = Arc::new(RwLock::new(load_charts(&current_cycle.read().await).await?));
     let axum_state = Arc::clone(&hashmaps);
 
     // Spawn cycle and chart update loop
@@ -76,8 +74,9 @@ async fn main() {
         .with_state(axum_state)
         .layer(TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -224,8 +223,8 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
         .await?;
     debug!("Charts metafile request completed");
     let dtpp = from_str::<DigitalTpp>(&metafile)?;
-    let mut faa: IndexMap<String, Vec<ChartDto>> = IndexMap::new();
-    let mut icao: IndexMap<String, String> = IndexMap::new();
+    let mut faa = IndexMap::new();
+    let mut icao = IndexMap::new();
     let mut count = 0;
 
     for state in dtpp.states {
@@ -233,35 +232,33 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
             for airport in city.airports {
                 for record in airport.chart_records {
                     let chart_dto = ChartDto {
-                        state: state.id.clone(),
-                        state_full: state.full_name.clone(),
-                        city: city.id.clone(),
-                        volume: city.volume.clone(),
-                        airport_name: airport.id.clone(),
-                        military: airport.military.clone(),
-                        faa_ident: airport.apt_ident.clone(),
-                        icao_ident: airport.icao_ident.clone(),
-                        chart_seq: record.chartseq,
-                        chart_name: record.chart_name,
+                        state: state.id.to_string(),
+                        state_full: state.full_name.to_string(),
+                        city: city.id.to_string(),
+                        volume: city.volume.to_string(),
+                        airport_name: airport.id.to_string(),
+                        military: airport.military.to_string(),
+                        faa_ident: airport.apt_ident.to_string(),
+                        icao_ident: airport.icao_ident.to_string(),
+                        chart_seq: record.chartseq.to_string(),
+                        chart_code: record.chart_code.to_string(),
+                        chart_name: record.chart_name.to_string(),
+                        pdf_name: record.pdf_name.to_string(),
                         pdf_path: format!("{base_url}/{pdf}", pdf = record.pdf_name),
-                        chart_group: match record.chart_code.as_str() {
+                        chart_group: match &*record.chart_code {
                             "IAP" => ChartGroup::Approaches,
                             "ODP" | "DP" | "DAU" => ChartGroup::Departures,
                             "STAR" => ChartGroup::Arrivals,
                             "APD" => ChartGroup::Apd,
                             _ => ChartGroup::General, // Includes "MIN" | "LAH" | "HOT"
                         },
-                        chart_code: record.chart_code,
-                        pdf_name: record.pdf_name,
                     };
-
-                    faa.entry(chart_dto.faa_ident.clone())
-                        .and_modify(|charts| charts.push(chart_dto.clone()))
-                        .or_insert(vec![chart_dto.clone()]);
-
                     if !chart_dto.icao_ident.is_empty() {
                         icao.insert(chart_dto.icao_ident.clone(), chart_dto.faa_ident.clone());
                     }
+                    faa.entry(chart_dto.faa_ident.clone())
+                        .and_modify(|charts: &mut Vec<ChartDto>| charts.push(chart_dto.clone()))
+                        .or_insert_with(|| vec![chart_dto]);
 
                     count += 1;
                 }
@@ -269,7 +266,7 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
         }
     }
 
-    info!("Loaded {num} charts", num = count);
+    info!("Loaded {count} charts");
     Ok(ChartsHashMaps { faa, icao })
 }
 
