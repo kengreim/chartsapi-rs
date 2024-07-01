@@ -1,100 +1,107 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct DigitalTpp {
+pub struct DigitalTpp<'a> {
     #[serde(rename = "@cycle")]
-    pub cycle: String,
+    pub cycle: Cow<'a, str>,
     #[serde(rename = "@from_edate")]
-    pub from_effective_date: String,
+    pub from_effective_date: Cow<'a, str>,
     #[serde(rename = "@to_edate")]
-    pub to_effective_date: String,
+    pub to_effective_date: Cow<'a, str>,
     #[serde(rename = "state_code")]
-    pub states: Vec<State>,
+    #[serde(borrow)]
+    pub states: Vec<State<'a>>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct State {
+pub struct State<'a> {
     #[serde(rename = "@ID")]
-    pub id: String,
+    pub id: Cow<'a, str>,
     #[serde(rename = "@state_fullname")]
-    pub full_name: String,
+    pub full_name: Cow<'a, str>,
     #[serde(rename = "city_name")]
-    pub cities: Vec<City>,
+    #[serde(borrow)]
+    pub cities: Vec<City<'a>>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct City {
+pub struct City<'a> {
     #[serde(rename = "@ID")]
-    pub id: String,
+    pub id: Cow<'a, str>,
     #[serde(rename = "@volume")]
-    pub volume: String,
+    pub volume: Cow<'a, str>,
     #[serde(rename = "airport_name")]
-    pub airports: Vec<Airport>,
+    #[serde(borrow)]
+    pub airports: Vec<Airport<'a>>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Airport {
+pub struct Airport<'a> {
     #[serde(rename = "@ID")]
-    pub id: String,
+    pub id: Cow<'a, str>,
     #[serde(rename = "@military")]
-    pub military: String,
+    pub military: Cow<'a, str>,
     #[serde(rename = "@apt_ident")]
-    pub apt_ident: String,
+    pub apt_ident: Cow<'a, str>,
     #[serde(rename = "@icao_ident")]
-    pub icao_ident: String,
+    pub icao_ident: Cow<'a, str>,
     #[serde(rename = "@alnum")]
-    pub alnum: String,
+    pub alnum: Cow<'a, str>,
     #[serde(rename = "record")]
-    pub chart_records: Vec<ChartRecord>,
+    #[serde(borrow)]
+    pub chart_records: Vec<ChartRecord<'a>>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ChartRecord {
-    pub chartseq: String,
-    pub chart_code: String,
-    pub chart_name: String,
-    pub useraction: String,
-    pub pdf_name: String,
-    pub cn_flg: String,
-    pub cnsection: String,
-    pub cnpage: String,
-    pub bvsection: String,
-    pub bvpage: String,
-    pub procuid: String,
-    pub two_colored: String,
-    pub civil: String,
-    pub faanfd18: String,
-    pub copter: String,
-    pub amdtnum: String,
-    pub amdtdate: String,
+pub struct ChartRecord<'a> {
+    pub chartseq: Cow<'a, str>,
+    pub chart_code: Cow<'a, str>,
+    pub chart_name: Cow<'a, str>,
+    pub useraction: Cow<'a, str>,
+    pub pdf_name: Cow<'a, str>,
+    pub cn_flg: Cow<'a, str>,
+    pub cnsection: Cow<'a, str>,
+    pub cnpage: Cow<'a, str>,
+    pub bvsection: Cow<'a, str>,
+    pub bvpage: Cow<'a, str>,
+    pub procuid: Cow<'a, str>,
+    pub two_colored: Cow<'a, str>,
+    pub civil: Cow<'a, str>,
+    pub faanfd18: Cow<'a, str>,
+    pub copter: Cow<'a, str>,
+    pub amdtnum: Cow<'a, str>,
+    pub amdtdate: Cow<'a, str>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct ProductSet {
+pub struct ProductSet<'a> {
     #[serde(rename = "@xmlns")]
-    pub xmlns: String,
-    pub status: Status,
-    pub edition: Edition,
+    pub xmlns: Cow<'a, str>,
+    pub status: Cow<'a, str>,
+    #[serde(borrow)]
+    pub edition: Edition<'a>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Status {
+pub struct Status<'a> {
     #[serde(rename = "@code")]
-    pub code: String,
+    pub code: Cow<'a, str>,
     #[serde(rename = "@message")]
-    pub message: String,
+    pub message: Cow<'a, str>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Edition {
+pub struct Edition<'a> {
     #[serde(rename = "@geoname")]
-    pub geoname: String,
+    pub geoname: Cow<'a, str>,
     #[serde(rename = "@editionName")]
-    pub name: String,
+    pub name: Cow<'a, str>,
     #[serde(rename = "@format")]
-    pub format: String,
+    pub format: Cow<'a, str>,
     #[serde(rename = "editionDate")]
-    pub date: String,
+    pub date: Cow<'a, str>,
     #[serde(rename = "editionNumber")]
-    pub number: String,
+    pub number: Cow<'a, str>,
 }
