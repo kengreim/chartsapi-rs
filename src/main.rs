@@ -9,6 +9,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::NaiveDate;
+use indexmap::map::Entry::{Occupied, Vacant};
 use indexmap::IndexMap;
 use quick_xml::de::from_str;
 use serde::{Deserialize, Serialize};
@@ -223,7 +224,7 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
         .await?;
     debug!("Charts metafile request completed");
     let dtpp = from_str::<DigitalTpp>(&metafile)?;
-    let mut faa = IndexMap::new();
+    let mut faa: IndexMap<String, Vec<ChartDto>> = IndexMap::new();
     let mut icao = IndexMap::new();
     let mut count = 0;
 
@@ -256,9 +257,15 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
                     if !chart_dto.icao_ident.is_empty() {
                         icao.insert(chart_dto.icao_ident.clone(), chart_dto.faa_ident.clone());
                     }
-                    faa.entry(chart_dto.faa_ident.clone())
-                        .and_modify(|charts: &mut Vec<ChartDto>| charts.push(chart_dto.clone()))
-                        .or_insert_with(|| vec![chart_dto]);
+
+                    match faa.entry(chart_dto.faa_ident.clone()) {
+                        Occupied(entry) => {
+                            entry.into_mut().push(chart_dto);
+                        }
+                        Vacant(entry) => {
+                            entry.insert(vec![chart_dto]);
+                        }
+                    };
 
                     count += 1;
                 }
