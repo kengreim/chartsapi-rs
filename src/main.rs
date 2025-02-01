@@ -342,13 +342,13 @@ async fn fetch_current_cycle() -> Result<String, anyhow::Error> {
         .await?;
     let product_set = from_str::<ProductSet>(&cycle_xml)?;
     let date = NaiveDate::parse_from_str(&product_set.edition.date, "%m/%d/%Y")?;
-    let number = if product_set.edition.number.len() == 2 {
-        product_set.edition.number
+    let cycle_str = if product_set.edition.number.len() == 2 {
+        format!("{}{}", date.format("%y"), product_set.edition.number)
     } else {
-        format!("0{}", product_set.edition.number)
+        format!("{}0{}", date.format("%y"), product_set.edition.number)
     };
-    let cycle_str = format!("{}{number}", date.format("%y"));
     info!("Found current cycle: {cycle_str}");
+
     Ok(cycle_str)
 }
 
