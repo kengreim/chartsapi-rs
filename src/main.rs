@@ -78,7 +78,7 @@ async fn main() {
         .route("/v1/charts", get(charts_handler))
         .nest_service("/v1/charts/static", ServeDir::new("assets"))
         .route(
-            "/v1/charts/:apt_id/:chart_search_term",
+            "/v1/charts/{apt_id}/{chart_search_term}",
             get(chart_search_handler),
         )
         .route("/health", get(|| async {}))
