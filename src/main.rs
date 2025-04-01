@@ -10,6 +10,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use indexmap::IndexMap;
+
 use quick_xml::de::from_str;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -17,8 +18,9 @@ use std::time::Duration;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::{debug, info, warn};
-
 mod faa_metafile;
+#[cfg(feature = "mcp")]
+mod mcp;
 mod response_dtos;
 
 struct ChartsHashMaps {
@@ -47,6 +49,8 @@ async fn main() {
             .expect("Could not fetch and initialize charts"),
     ));
     let axum_state = Arc::clone(&hashmaps);
+    #[cfg(feature = "mcp")]
+    let mcp_state = Arc::clone(&hashmaps);
 
     // Spawn cycle and chart update loop
     tokio::spawn(async move {
@@ -74,7 +78,7 @@ async fn main() {
     });
 
     // Create and run axum app
-    let app = Router::new()
+    let base_app = Router::new()
         .route("/v1/charts", get(charts_handler))
         .nest_service("/v1/charts/static", ServeDir::new("assets"))
         .route(
@@ -85,8 +89,19 @@ async fn main() {
         .with_state(axum_state)
         .layer(TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    #[cfg(feature = "mcp")]
+    {
+        let (cancellation_token, mcp_router) = mcp::get_router(mcp_state.clone());
+        let app = Router::new().merge(mcp_router).merge(base_app);
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
+        axum::serve(listener, app).await.unwrap();
+        cancellation_token.cancel();
+    }
+    #[cfg(not(feature = "mcp"))]
+    {
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
+        axum::serve(listener, base_app).await.unwrap();
+    }
 }
 
 #[derive(Deserialize)]

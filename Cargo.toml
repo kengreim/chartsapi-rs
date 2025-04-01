@@ -1,7 +1,11 @@
 [package]
 name = "chartsapi-rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+
+[features]
+default = ["mcp"]
+mcp = ["rmcp", "tokio-util"]
 
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
@@ -15,3 +19,9 @@ tracing-subscriber = "0.3.19"
 tracing = "0.1.41"
 tower-http = { version = "0.6.2", features = ["trace", "fs"] }
 chrono = "0.4.39"
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk/", features = [
+    "server",
+    "transport-sse-server",
+    "transport-io",
+], optional = true }
+tokio-util = { version = "0.7.14", optional = true }
