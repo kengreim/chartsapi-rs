@@ -58,7 +58,7 @@ impl GroupedChartsDto {
             ChartGroup::Approaches => &mut self.approaches,
         };
         match charts_category_vec {
-            Some(ref mut charts) => charts.push(chart_dto),
+            Some(charts) => charts.push(chart_dto),
             None => *charts_category_vec = Some(vec![chart_dto]),
         }
     }
