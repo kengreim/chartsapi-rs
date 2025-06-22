@@ -10,8 +10,12 @@ Unlike AviationAPI, this clone does not re-host the chart PDFs. Instead, the API
 
 This version includes the following features that are a superset to the AviationAPI `/charts` functionality
 
-* Retrieve a single chart with `/charts/{airport id}/{search term}`. This will redirect to the first FAA-hosted chart
+- Retrieve a single chart with `/charts/{airport id}/{search term}`. This will redirect to the first FAA-hosted chart
   PDF
   that includes the search term in the chart's name (case-insensitive)
-* Host static charts at `/charts/static/{static file}`, served from the `assets` directory.
+- Host static charts at `/charts/static/{static file}`, served from the `assets` directory.
   The Dockerfile will copy `assets` in the deployment
+
+# MCP Support
+
+- `get_charts` maps to `/charts/{airport id}`
