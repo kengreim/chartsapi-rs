@@ -1,18 +1,17 @@
 use axum::Router;
 use rmcp::{
-    const_string,
+    Error as McpError, ServerHandler, const_string,
     model::{
         CallToolResult, ConstString, Content, Implementation, ProtocolVersion, ServerCapabilities,
         ServerInfo,
     },
     tool,
-    transport::{sse_server::SseServerConfig, SseServer},
-    Error as McpError, ServerHandler,
+    transport::{SseServer, sse_server::SseServerConfig},
 };
 use std::sync::{Arc, RwLock};
 use tokio_util::sync::CancellationToken;
 
-use crate::{lookup_charts, ChartsHashMaps};
+use crate::{ChartsHashMaps, ChartsHost, lookup_charts};
 
 #[derive(Clone)]
 pub struct Server {
@@ -31,16 +30,18 @@ impl Server {
         #[schemars(description = "Airport identifier code (ICAO or FAA)")]
         airport: String,
     ) -> Result<CallToolResult, McpError> {
-        Ok(lookup_charts(&airport, &self.hashmaps).map_or_else(
-            || CallToolResult::error(vec![Content::text("Not found")]),
-            |dto_vec| {
-                let contents = dto_vec
-                    .into_iter()
-                    .map(|dto| Content::text(format!("{dto:?}")))
-                    .collect();
-                CallToolResult::success(contents)
-            },
-        ))
+        Ok(
+            lookup_charts(&airport, ChartsHost::Faa, &self.hashmaps).map_or_else(
+                || CallToolResult::error(vec![Content::text("Not found")]),
+                |dto_vec| {
+                    let contents = dto_vec
+                        .into_iter()
+                        .map(|dto| Content::text(format!("{dto:?}")))
+                        .collect();
+                    CallToolResult::success(contents)
+                },
+            ),
+        )
     }
 }
 

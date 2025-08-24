@@ -23,6 +23,8 @@ mod faa_metafile;
 mod mcp;
 mod response_dtos;
 
+const DTPP_BASE: &str = "https://aeronav.faa.gov/d-tpp";
+
 struct ChartsHashMaps {
     faa: IndexMap<String, Vec<ChartDto>>,
     icao: IndexMap<String, String>,
@@ -31,7 +33,7 @@ struct ChartsHashMaps {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_env_filter("info,chartsapi_rs=debug")
         .init();
 
     // Initialize current_cycle and in-memory hashmaps for FAA/ICAO id lookup
@@ -40,7 +42,7 @@ async fn main() {
             "Error initializing current cycle, falling back to default: {}",
             e
         );
-        "2506".to_string()
+        "2508".to_string()
     }));
     let cycle_clone = current_cycle.read().unwrap().clone();
     let hashmaps = Arc::new(RwLock::new(
@@ -108,6 +110,36 @@ async fn main() {
 struct ChartsOptions {
     apt: Option<String>,
     group: Option<i32>,
+    host: Option<String>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ChartsHost {
+    Faa,
+    Mirror,
+}
+
+impl ChartsHost {
+    #[must_use]
+    pub fn try_from(string: &Option<String>) -> Option<Self> {
+        string.as_ref().and_then(|string| {
+            if string.to_uppercase() == "MIRROR" {
+                Some(Self::Mirror)
+            } else if string.to_uppercase() == "FAA" {
+                Some(Self::Faa)
+            } else {
+                None
+            }
+        })
+    }
+
+    #[must_use]
+    pub const fn get_host_base_url(&self) -> &'static str {
+        match self {
+            Self::Faa => DTPP_BASE,
+            Self::Mirror => "https://charts.flightsimapi.com",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -154,10 +186,11 @@ async fn charts_handler(
             .into_response();
     }
 
+    let host = ChartsHost::try_from(&chart_options.host).unwrap_or(ChartsHost::Faa);
     let mut results: IndexMap<String, ResponseDto> = IndexMap::new();
     for airport in chart_options.apt.unwrap().split(',') {
         let airport_uppercase = airport.to_uppercase();
-        if let Some(charts) = lookup_charts(&airport_uppercase, &hashmaps) {
+        if let Some(charts) = lookup_charts(&airport_uppercase, host, &hashmaps) {
             results.insert(
                 airport_uppercase,
                 apply_group_param(&charts, chart_options.group),
@@ -167,38 +200,63 @@ async fn charts_handler(
     (StatusCode::OK, Json(results)).into_response()
 }
 
-fn lookup_charts(apt_id: &str, hashmaps: &Arc<RwLock<ChartsHashMaps>>) -> Option<Vec<ChartDto>> {
+fn lookup_charts(
+    apt_id: &str,
+    host: ChartsHost,
+    hashmaps: &Arc<RwLock<ChartsHashMaps>>,
+) -> Option<Vec<ChartDto>> {
     let reader = hashmaps.read().unwrap();
     reader.faa.get(apt_id).map_or_else(
         || {
-            reader
-                .icao
-                .get(&apt_id.to_uppercase())
-                .and_then(|faa_id| reader.faa.get(faa_id).cloned())
+            reader.icao.get(&apt_id.to_uppercase()).and_then(|faa_id| {
+                reader
+                    .faa
+                    .get(faa_id)
+                    .cloned()
+                    .map(|charts| set_host_for_charts(charts, host))
+            })
         },
-        |charts| Some(charts.clone()),
+        |charts| Some(set_host_for_charts(charts.clone(), host)),
     )
 }
 
+#[allow(dead_code)]
+fn set_host_for_chart_pdf(mut chart: ChartDto, host: ChartsHost) -> ChartDto {
+    chart.pdf_path = format!("{}/{}", host.get_host_base_url(), chart.pdf_path);
+    chart
+}
+
+fn set_host_for_charts(mut charts: Vec<ChartDto>, host: ChartsHost) -> Vec<ChartDto> {
+    for chart in &mut charts {
+        chart.pdf_path = format!("{}/{}", host.get_host_base_url(), chart.pdf_path);
+    }
+    charts
+}
+
+#[derive(Deserialize)]
+struct ChartsSearchOptions {
+    host: Option<String>,
+}
 async fn chart_search_handler(
     State(hashmaps): State<Arc<RwLock<ChartsHashMaps>>>,
     Path((apt_id, chart_search)): Path<(String, String)>,
+    options: Query<ChartsSearchOptions>,
 ) -> Response {
-    if let Some(charts) = lookup_charts(&apt_id.to_uppercase(), &hashmaps) {
+    let host = ChartsHost::try_from(&options.host).unwrap_or(ChartsHost::Faa);
+    if let Some(charts) = lookup_charts(&apt_id.to_uppercase(), host, &hashmaps) {
         if let Some(chart) = charts
             .iter()
             .find(|c| c.chart_name.contains(&chart_search.to_uppercase()))
         {
             return Redirect::temporary(&chart.pdf_path).into_response();
-        } else {
-            let cleaned_search: String =
-                chart_search.chars().filter(|c| c.is_alphabetic()).collect();
-            if let Some(chart) = charts.iter().find(|c| {
-                (c.chart_group == ChartGroup::Arrivals || c.chart_group == ChartGroup::Departures)
-                    && c.chart_name.contains(&cleaned_search.to_uppercase())
-            }) {
-                return Redirect::temporary(&chart.pdf_path).into_response();
-            }
+        }
+
+        let cleaned_search: String = chart_search.chars().filter(|c| c.is_alphabetic()).collect();
+        if let Some(chart) = charts.iter().find(|c| {
+            (c.chart_group == ChartGroup::Arrivals || c.chart_group == ChartGroup::Departures)
+                && c.chart_name.contains(&cleaned_search.to_uppercase())
+        }) {
+            return Redirect::temporary(&chart.pdf_path).into_response();
         }
     }
 
@@ -273,11 +331,11 @@ fn filter_group_by_types(
 
 async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Error> {
     debug!("Starting charts metafile request");
-    let base_url = cycle_url(current_cycle);
-    let metafile = reqwest::get(format!("{base_url}/xml_data/d-tpp_Metafile.xml"))
-        .await?
-        .text()
-        .await?;
+    let metafile_url = format!(
+        "{}/xml_data/d-tpp_Metafile.xml",
+        faa_cycle_url(current_cycle)
+    );
+    let metafile = reqwest::get(&metafile_url).await?.text().await?;
     debug!("Charts metafile request completed");
     let dtpp = from_str::<DigitalTpp>(&metafile)?;
 
@@ -312,7 +370,7 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
                         icao_ident: airport.icao_ident.clone(),
                         chart_seq: record.chartseq,
                         chart_name: record.chart_name,
-                        pdf_path: format!("{base_url}/{pdf}", pdf = record.pdf_name),
+                        pdf_path: format!("{current_cycle}/{pdf}", pdf = record.pdf_name),
                         chart_group: match record.chart_code.as_str() {
                             "IAP" => ChartGroup::Approaches,
                             "ODP" | "DP" | "DAU" => ChartGroup::Departures,
@@ -367,6 +425,6 @@ async fn fetch_current_cycle() -> Result<String, anyhow::Error> {
     Ok(cycle_str)
 }
 
-fn cycle_url(current_cycle: &str) -> String {
-    format!("https://aeronav.faa.gov/d-tpp/{current_cycle}",)
+fn faa_cycle_url(current_cycle: &str) -> String {
+    format!("{DTPP_BASE}/{current_cycle}",)
 }
