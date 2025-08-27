@@ -137,7 +137,7 @@ impl ChartsHost {
     pub const fn get_host_base_url(&self) -> &'static str {
         match self {
             Self::Faa => DTPP_BASE,
-            Self::Mirror => "https://charts.flightsimapi.com",
+            Self::Mirror => "https://aeronav.flightsimapi.com/d-tpp",
         }
     }
 }
