@@ -43,7 +43,7 @@ async fn main() {
             "Error initializing current cycle, falling back to default: {}",
             e
         );
-        "2508".to_string()
+        "2603".to_string()
     }));
     let cycle_clone = current_cycle.read().unwrap().clone();
     let hashmaps = Arc::new(RwLock::new(
@@ -434,20 +434,15 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
 
 async fn fetch_current_cycle() -> Result<String, anyhow::Error> {
     info!("Fetching current cycle");
-    let cycle_xml = reqwest::get("https://external-api.faa.gov/apra/dtpp/info")
+    let cycle_xml = reqwest::get("https://nfdc.faa.gov/webContent/dtpp/current.xml")
         .await?
         .text()
         .await?;
-    let product_set = from_str::<ProductSet>(&cycle_xml)?;
-    let date = NaiveDate::parse_from_str(&product_set.edition.date, "%m/%d/%Y")?;
-    let cycle_str = if product_set.edition.number.len() == 2 {
-        format!("{}{}", date.format("%y"), product_set.edition.number)
-    } else {
-        format!("{}0{}", date.format("%y"), product_set.edition.number)
-    };
-    info!("Found current cycle: {cycle_str}");
+    let dtpp = from_str::<DigitalTpp>(&cycle_xml)?;
+    let cycle = dtpp.cycle.trim().to_string();
+    info!("Found current cycle: {cycle}");
 
-    Ok(cycle_str)
+    Ok(cycle)
 }
 
 fn faa_cycle_url(current_cycle: &str) -> String {
