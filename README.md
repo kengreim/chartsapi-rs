@@ -19,3 +19,4 @@ This version includes the following features that are a superset to the Aviation
 # MCP Support
 
 - `get_charts` maps to `/charts/{airport id}`
+- Served at `/mcp` (Streamable HTTP)
