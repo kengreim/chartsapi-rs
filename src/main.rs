@@ -98,13 +98,27 @@ async fn main() {
         let (cancellation_token, mcp_router) = mcp::get_router(mcp_state.clone());
         let app = Router::new().merge(mcp_router).merge(base_app);
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
-        cancellation_token.cancel();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to install Ctrl+C handler");
+                cancellation_token.cancel();
+            })
+            .await
+            .unwrap();
     }
     #[cfg(not(feature = "mcp"))]
     {
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-        axum::serve(listener, base_app).await.unwrap();
+        axum::serve(listener, base_app)
+            .with_graceful_shutdown(async {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to install Ctrl+C handler");
+            })
+            .await
+            .unwrap();
     }
 }
 
