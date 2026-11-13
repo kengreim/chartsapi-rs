@@ -43,7 +43,7 @@ async fn main() {
             "Error initializing current cycle, falling back to default: {}",
             e
         );
-        "2508".to_string()
+        "2603".to_string()
     }));
     let cycle_clone = current_cycle.read().unwrap().clone();
     let hashmaps = Arc::new(RwLock::new(
@@ -98,13 +98,27 @@ async fn main() {
         let (cancellation_token, mcp_router) = mcp::get_router(mcp_state.clone());
         let app = Router::new().merge(mcp_router).merge(base_app);
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-        axum::serve(listener, app).await.unwrap();
-        cancellation_token.cancel();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to install Ctrl+C handler");
+                cancellation_token.cancel();
+            })
+            .await
+            .unwrap();
     }
     #[cfg(not(feature = "mcp"))]
     {
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-        axum::serve(listener, base_app).await.unwrap();
+        axum::serve(listener, base_app)
+            .with_graceful_shutdown(async {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to install Ctrl+C handler");
+            })
+            .await
+            .unwrap();
     }
 }
 
@@ -399,7 +413,7 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
                         chart_group: match record.chart_code.as_str() {
                             "IAP" => ChartGroup::Approaches,
                             "ODP" | "DP" | "DAU" => ChartGroup::Departures,
-                            "STAR" => ChartGroup::Arrivals,
+                            "STAR" | "STR" => ChartGroup::Arrivals,
                             "APD" => ChartGroup::Apd,
                             _ => ChartGroup::General, // Includes "MIN" | "LAH" | "HOT"
                         },
@@ -434,20 +448,15 @@ async fn load_charts(current_cycle: &str) -> Result<ChartsHashMaps, anyhow::Erro
 
 async fn fetch_current_cycle() -> Result<String, anyhow::Error> {
     info!("Fetching current cycle");
-    let cycle_xml = reqwest::get("https://external-api.faa.gov/apra/dtpp/info")
+    let cycle_xml = reqwest::get("https://nfdc.faa.gov/webContent/dtpp/current.xml")
         .await?
         .text()
         .await?;
-    let product_set = from_str::<ProductSet>(&cycle_xml)?;
-    let date = NaiveDate::parse_from_str(&product_set.edition.date, "%m/%d/%Y")?;
-    let cycle_str = if product_set.edition.number.len() == 2 {
-        format!("{}{}", date.format("%y"), product_set.edition.number)
-    } else {
-        format!("{}0{}", date.format("%y"), product_set.edition.number)
-    };
-    info!("Found current cycle: {cycle_str}");
+    let dtpp = from_str::<DigitalTpp>(&cycle_xml)?;
+    let cycle = dtpp.cycle.trim().to_string();
+    info!("Found current cycle: {cycle}");
 
-    Ok(cycle_str)
+    Ok(cycle)
 }
 
 fn faa_cycle_url(current_cycle: &str) -> String {
